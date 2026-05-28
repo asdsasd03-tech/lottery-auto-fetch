@@ -1,0 +1,27 @@
+name: 每日自動抓取今彩539開獎號碼
+
+on:
+  schedule:
+    - cron: '30 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 檢出程式碼
+        uses: actions/checkout@v4
+      
+      - name: 設定 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: 安裝依賴
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+      
+      - name: 執行抓取腳本
+        run: python fetch_draw.py
