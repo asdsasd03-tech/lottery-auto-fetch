@@ -1,4 +1,4 @@
-# fetch_draw.py - 自動抓取今彩539開獎號碼
+# fetch_draw.py - 自動抓取今彩539開獎號碼（修正版）
 import requests
 from playwright.sync_api import sync_playwright
 import sys
@@ -36,7 +36,7 @@ def fetch_today_draw():
                     for (const ball of balls) {
                         const num = parseInt(ball.innerText);
                         if (!isNaN(num) && num >= 1 && num <= 39) {
-                            numbers.append(num);
+                            numbers.push(num);
                         }
                     }
                     if (numbers.length !== 5) return null;
