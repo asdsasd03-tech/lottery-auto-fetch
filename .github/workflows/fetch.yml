@@ -2,7 +2,7 @@ name: 每日自動抓取今彩539開獎號碼
 
 on:
   schedule:
-    - cron: '30 12 * * *'
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:
