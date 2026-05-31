@@ -1,8 +1,7 @@
-# fetch_draw.py - 修正版抓取腳本
+# fetch_draw.py - 修正版（正確解析）
 import requests
 from playwright.sync_api import sync_playwright
 import sys
-import re
 
 CLOUD_RUN_URL = "https://lottery-system-357432099525.asia-east1.run.app"
 
@@ -18,16 +17,13 @@ def fetch_today_draw():
             page.goto("https://www.taiwanlottery.com/lotto/result/daily_cash", timeout=30000)
             page.wait_for_selector(".result-item", timeout=15000)
             
-            # 方法1：從頁面中提取所有開獎資料
+            # 抓取資料
             result = page.evaluate('''
                 () => {
                     const items = document.querySelectorAll('.result-item');
                     if (items.length === 0) return null;
-                    
-                    // 取第一筆（最新一期）
                     const firstItem = items[0];
                     
-                    // 找日期
                     const dateElem = firstItem.querySelector('.period-date');
                     if (!dateElem) return null;
                     const dateText = dateElem.innerText;
@@ -37,45 +33,33 @@ def fetch_today_draw():
                     const year = parseInt(dateMatch[1]) + 1911;
                     const month = dateMatch[2].padStart(2, '0');
                     const day = dateMatch[3].padStart(2, '0');
+                    const dateStr = year + '-' + month + '-' + day;
                     
-                    // 找大小順序的號碼
-                    let numbers = [];
-                    const ballContainer = firstItem.querySelector('.result-item-simple-area-ball-container');
-                    if (ballContainer) {
-                        const balls = ballContainer.querySelectorAll('.ball');
-                        for (const ball of balls) {
-                            const num = parseInt(ball.innerText);
-                            if (!isNaN(num) && num >= 1 && num <= 39) {
+                    const numbers = [];
+                    const allBalls = firstItem.querySelectorAll('.ball');
+                    for (let i = 0; i < allBalls.length; i++) {
+                        const num = parseInt(allBalls[i].innerText);
+                        if (!isNaN(num) && num >= 1 && num <= 39) {
+                            if (numbers.indexOf(num) === -1) {
                                 numbers.push(num);
                             }
                         }
                     }
                     
-                    // 如果上面的方法沒找到，嘗試其他選擇器
-                    if (numbers.length !== 5) {
-                        const allBalls = firstItem.querySelectorAll('.ball');
-                        for (const ball of allBalls) {
-                            const num = parseInt(ball.innerText);
-                            if (!isNaN(num) && num >= 1 && num <= 39 && !numbers.includes(num)) {
-                                numbers.push(num);
-                            }
-                            if (numbers.length === 5) break;
-                        }
-                    }
-                    
-                    if (numbers.length !== 5) return null;
+                    if (numbers.length < 5) return null;
+                    numbers.sort((a, b) => a - b);
                     
                     return {
-                        date: `${year}-${month}-${day}`,
-                        numbers: numbers.sort((a, b) => a - b)
+                        drawDate: dateStr,
+                        drawNumbers: numbers.slice(0, 5)
                     };
                 }
             ''')
             
             browser.close()
             
-            if result and result.numbers and len(result.numbers) == 5:
-                print(f"✅ 抓取成功: {result['date']} -> {result['numbers']}")
+            if result and result.get('drawNumbers') and len(result['drawNumbers']) == 5:
+                print(f"✅ 抓取成功: {result['drawDate']} -> {result['drawNumbers']}")
                 return result
             else:
                 print("❌ 解析號碼失敗")
@@ -93,11 +77,16 @@ def send_to_cloud_run(date, numbers):
     
     try:
         resp = requests.post(url, json=payload, timeout=30)
-        if resp.status_code == 200 and resp.json().get('success'):
-            print(f"✅ 成功更新 {date}: {numbers}")
-            return True
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('success'):
+                print(f"✅ 成功更新 {date}: {numbers}")
+                return True
+            else:
+                print(f"❌ API 錯誤: {data}")
+                return False
         else:
-            print(f"❌ 更新失敗: {resp.text}")
+            print(f"❌ HTTP 錯誤: {resp.status_code}")
             return False
     except Exception as e:
         print(f"❌ 發送失敗: {e}")
@@ -108,7 +97,7 @@ if __name__ == "__main__":
     draw = fetch_today_draw()
     
     if draw:
-        send_to_cloud_run(draw['date'], draw['numbers'])
+        send_to_cloud_run(draw['drawDate'], draw['drawNumbers'])
     else:
         print("抓取失敗")
         sys.exit(1)
